@@ -70,3 +70,44 @@ So the widget's endpoints cannot be discovered from inside this session. Either:
 6. Whether Täby / Järfälla / Simrishamn hit the same backend with a different tenant id.
 7. Whether an iCal/`.ics` subscription exists. If it does, the far cheaper route is an
    entry in `doc/ics/yaml/` instead of a Python module.
+
+---
+
+## Progress log
+
+### 2026-09-04 — offline groundwork complete
+
+Verified against a local checkout of upstream master (draft source + doc page copied in,
+inner package isolated on `PYTHONPATH` so `custom_components/.../calendar.py` does not
+shadow the stdlib `calendar` module):
+
+| Check | Result |
+|---|---|
+| `pytest tests/test_source_components.py` | **35 passed** |
+| Negative control (`COUNTRY = "sw"`) | fails with `unsupported country code 'sw' in source danderyd_se` — confirms the suite really does validate this file rather than skipping it |
+| `ruff check --select E,F,W,I` | clean |
+| `ruff format --check` | clean |
+| All 18 `ICON_MAP` values are `Icons` members | yes |
+| Exception signatures match usage | `SourceArgumentNotFound(argument, value, …)`, `SourceArgumentNotFoundWithSuggestions(argument, value, suggestions)` |
+
+So everything upstream's CI gate checks is already satisfied. What remains is the part
+that needs the network: the two endpoint methods and a live `test_sources.py` run.
+
+### Waste streams to expect (from the municipality's own pages)
+
+Villa / radhus standard subscription: **matavfall** + **restavfall**. Optional add-ons:
+**trädgårdsavfall**, **returpapper** (6 or 13 pickups/year). From 2026 food-waste sorting
+is mandatory and kerbside packaging collection ("Närsortera") joins the standard
+subscription — paper and plastic every second week, glass and metal every fourth week.
+Also collected but likely on request rather than on a calendar: grovavfall, farligt
+avfall, elavfall, fallfrukt, slam.
+
+`ICON_MAP` is keyed on lower-cased, whitespace-collapsed strings, so only the wording
+needs confirming against a live response, not the casing.
+
+### Environment status
+
+| Blocker | State |
+|---|---|
+| GitHub push | **resolved** — branch pushed |
+| Network egress | **still blocked.** `example.com` and `google.com` are refused too, so the environment is still at `Trusted`. The allowlist is read at VM boot, so a policy change cannot take effect in an already-running session — a new session is required regardless |
