@@ -111,3 +111,16 @@ needs confirming against a live response, not the casing.
 |---|---|
 | GitHub push | **resolved** — branch pushed |
 | Network egress | **still blocked.** `example.com` and `google.com` are refused too, so the environment is still at `Trusted`. The allowlist is read at VM boot, so a policy change cannot take effect in an already-running session — a new session is required regardless |
+
+### 2026-09-04 — handoff prepared
+
+`research/setup_dev.sh` added and verified from a clean directory and from the default
+path: clones upstream, builds the venv, works around the `calendar.py` shadowing, installs
+this repo's files and runs the CI gate (35 passed) plus ruff. Exit 0 both times.
+
+The live test command in the README was dry-run and behaves correctly — it resolves the
+source, runs the `Karlsrovägen` case and stops at
+`failed: endpoint unknown — see research/CAPTURE.md`. So the rig is sound end to end and
+the only thing missing is the wire format.
+
+Network at handoff: `https://www.danderyd.se/` still returns `000` (proxy 403).

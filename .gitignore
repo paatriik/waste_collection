@@ -5,3 +5,5 @@ venv/
 danderyd-capture/
 danderyd-capture.tgz
 *.har
+
+.devrig/
