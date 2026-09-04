@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+danderyd-capture/
+danderyd-capture.tgz
+*.har
