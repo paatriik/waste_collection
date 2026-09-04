@@ -80,6 +80,22 @@ incognito window so there is nothing personal in the file.
 
 ---
 
+## Before you implement anything from the capture
+
+Look at the request URLs you captured **first**, and compare them against the shared
+platforms upstream already supports. `research/probe_platform.sh` does this automatically,
+but by eye:
+
+| If a captured URL looks like… | Then |
+|---|---|
+| `…/FutureWeb…/SimpleWastePickup/SearchAdress` | It is **EDP FutureWeb**. Upstream `edpevent_se` already handles it — no new module. Use it with `url:` set to the `…/SimpleWastePickup` base, and contribute a `SERVICE_PROVIDERS` entry. |
+| `…avfallsapp.se/…/nova/v1/…` | It is **Avfallsappen**. Upstream `avfallsapp_se` handles it — add a provider entry. |
+| ends in `.ics` / `webcal:` | A YAML entry in upstream `doc/ics/yaml/`. No Python. |
+
+Only if none of these match is `research/danderyd_se.draft.py` the right thing to finish.
+Writing a new module for a provider upstream already covers is the single most common
+reason these PRs get rejected (upstream's own mistake #5).
+
 ## Also worth checking while you are on the page
 
 - Is there a **"Prenumerera"**, **"iCal"**, **".ics"** or **"Lägg till i kalender"** link

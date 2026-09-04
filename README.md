@@ -14,6 +14,9 @@ session with no memory of it. Read it top to bottom before doing anything.
 # 1. Is the network blocker gone? This is the only thing that decides what you do next.
 curl -sS -o /dev/null -w '%{http_code}\n' https://www.danderyd.se/
 
+# 1b. If that printed 200, run this FIRST. It may end the whole task in 30 seconds.
+bash research/probe_platform.sh
+
 # 2. Build the test rig (~1 min, idempotent, safe to re-run).
 bash research/setup_dev.sh
 
@@ -29,7 +32,7 @@ Step 1 prints `200` → go to **Path A**. It prints `000` → go to **Path B**.
 
 | | |
 |---|---|
-| Goal | One new source module + one doc page, submitted as a PR to upstream `master` |
+| Goal | Upstream support for Danderyd — **as a new module only if no shared platform already covers it** (see the platform question) |
 | Blocked on | The collection widget's HTTP endpoints, which are still unknown |
 | Source module | Draft at `research/danderyd_se.draft.py`. Everything except two methods is done and verified |
 | Test address | **Provisional placeholder.** Must be verified live before submitting |
@@ -43,6 +46,38 @@ validating this file rather than skipping it. Re-run that control if you ever do
 green result.
 
 ---
+
+## The platform question — settle this before writing any line of code
+
+Upstream's list of common contribution mistakes has this at **#5: "Provider already
+covered by a shared platform. Check first."** It is not settled here, and it decides how
+much work is left:
+
+| If Danderyd runs… | Then the contribution is… |
+|---|---|
+| **EDP FutureWeb** (upstream `edpevent_se`, 44 tenants) | a **four-line entry** in `SERVICE_PROVIDERS` + a doc row. Delete the draft. |
+| **Avfallsappen / Nova** (upstream `avfallsapp_se`) | a provider entry in that module. Delete the draft. |
+| **an ICS feed** | a ~20-line YAML file in upstream `doc/ics/yaml/`. No Python at all. |
+| none of the above | the new module in `research/danderyd_se.draft.py`. |
+
+Why EDP FutureWeb is the live hypothesis, not a wild guess:
+
+- It is the dominant Swedish municipal waste-billing platform, and upstream already
+  carries **44** tenants of it — including two in Stockholm County: **Nacka**
+  (`futureweb.nvoa.se/EDP/FutureWebBasic/SimpleWastePickup`) and **Roslagsvatten**
+  (`edpmypage.roslagsvatten.se/FutureWebOS/SimpleWastePickup`).
+- Its flow is `POST {base}/SearchAdress?searchText=…` → addresses with a building id →
+  `GetWastePickupSchedule`. That is exactly the two-step type-then-pick behaviour
+  danderyd.se describes.
+- Danderyd's own advice — *if you can't find your address, try adding or removing the
+  space between letters and numbers* — is the known FutureWeb address-matching quirk.
+- Danderyd took billing over from Verdis in June 2026 and now invoices residents
+  directly, which is precisely when a kommun stands up a platform like this.
+
+This is **circumstantial and unverified**. `research/probe_platform.sh` settles it in one
+command from any machine with network: it fingerprints the page and its JavaScript
+against all three platforms, probes ten candidate FutureWeb hostnames, and prints the
+verdict and the exact config to use.
 
 ## The blocker
 
@@ -123,9 +158,13 @@ current `CLAUDE.md` and `doc/contributing_source.md`.
 
 ## Facts already established — do not re-derive these
 
-- **Danderyd is not supported upstream.** `grep -ri danderyd` over the whole upstream
-  tree at master returns zero hits. It is not in `edpevent_se.py`, `avfallsapp_se.py`,
-  `recollect.yaml` or any other shared-platform config. A new source module is correct.
+- **Danderyd is not supported upstream *by name*.** `grep -ri danderyd` over the whole
+  upstream tree at master returns zero hits. But **this does not establish that a new
+  source module is needed**, and an earlier revision of this file wrongly said it did.
+  `edpevent_se.py` is a multi-tenant module that accepts a free-form `url` argument
+  pointing at any `.../FutureWeb/SimpleWastePickup` endpoint. Absence from its
+  `SERVICE_PROVIDERS` list therefore proves nothing about whether Danderyd's widget
+  runs on it. See **the platform question** below — resolve that before writing code.
 - **Verdis AB** is the collection contractor, and also serves **Täby, Järfälla and
   Simrishamn**. The "one module covers four municipalities" idea is **mostly dead** and
   should not be re-derived: Simrishamn is already upstream as `okrab_se`, backed by
@@ -217,6 +256,7 @@ working:
 | `research/CAPTURE.md` | Three ways to obtain the endpoints |
 | `research/capture.sh` | Automates the static half of the capture |
 | `research/setup_dev.sh` | Builds the test rig and runs the CI gate |
+| `research/probe_platform.sh` | **Run this first.** Decides whether a new module is needed at all |
 
 `custom_components/.../source/danderyd_se.py` does not exist yet — that path is the
 finished article's home, and `setup_dev.sh` prefers it over the draft once it appears.

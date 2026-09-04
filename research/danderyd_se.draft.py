@@ -1,8 +1,18 @@
-"""DRAFT — not shippable yet.
+"""DRAFT — not shippable yet, and possibly not needed at all.
 
-Everything here except the two methods marked TODO is settled and does not depend
-on the widget's wire format. When the endpoint capture arrives (see CAPTURE.md),
-fill in `_search_address` and `_fetch_schedule`, move this file to
+STOP before finishing this. Run `bash research/probe_platform.sh` from a machine
+with network access first. Danderyd may be served by EDP FutureWeb, which upstream
+already supports through the multi-tenant `edpevent_se` module — that module takes
+a free-form `url` argument, so Danderyd's absence from its SERVICE_PROVIDERS list
+says nothing about whether it works. If the probe reports EDP (or Avfallsappen, or
+an ICS feed), delete this file: the contribution is then a few lines in an existing
+module, and writing a new one for an already-covered provider is upstream's most
+common rejection reason. See "The platform question" in README.md.
+
+Only if the probe rules all of those out: everything here except the two methods
+marked TODO is settled and does not depend on the widget's wire format. Fill in
+`_search_address` and `_fetch_schedule` from the capture (see CAPTURE.md), move
+this file to
 custom_components/waste_collection_schedule/waste_collection_schedule/source/danderyd_se.py
 and drop this docstring.
 """

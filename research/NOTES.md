@@ -180,3 +180,52 @@ be low. Neither appears anywhere upstream.
    keys `fetch()` depends on were implicit. Documented in the docstring.
 
 CI gate still green after all three (35 passed, ruff clean).
+
+### 2026-09-04 — the premise was wrong: check the shared platforms first
+
+Retested the network at the start of this pass: `danderyd.se`, `verdis.se` and
+`example.com` all still `000`, `WebFetch` still `EGRESS_BLOCKED`. Environment unchanged.
+
+**The conclusion "a new source module is required" was never established.** It rested on
+`grep -ri danderyd` returning 0 hits upstream. That proves the *name* is absent; it does
+not prove the *platform* is. `edpevent_se.py` is a multi-tenant module whose `Source`
+takes a free-form `url` argument:
+
+```python
+def __init__(self, street_address, service_provider=None, url=None):
+```
+
+so it serves any `.../FutureWeb.../SimpleWastePickup` endpoint whether or not the kommun
+appears in its `SERVICE_PROVIDERS` list. Absence from that list is not absence of support.
+Upstream lists this exact error as common mistake **#5**: *"Provider already covered by a
+shared platform. Check first."*
+
+**EDP FutureWeb is now the leading hypothesis for Danderyd:**
+
+- Upstream carries **44** FutureWeb tenants, two of them in Stockholm County — Nacka
+  (`futureweb.nvoa.se/EDP/FutureWebBasic/SimpleWastePickup`) and Roslagsvatten
+  (`edpmypage.roslagsvatten.se/FutureWebOS/SimpleWastePickup`).
+- FutureWeb's flow is `POST {base}/SearchAdress?searchText=…` → addresses carrying a
+  building id → `GetWastePickupSchedule`. That is exactly the type-then-pick behaviour
+  described on danderyd.se, and exactly the two-step shape the draft assumes.
+- Danderyd's "try adding or removing the space between letters and numbers" advice is the
+  known FutureWeb address-matching quirk.
+- Danderyd took billing over from Verdis in June 2026 and now invoices residents directly
+  — the moment a kommun typically stands up a platform of this kind.
+
+All circumstantial. `WebSearch` could not confirm or refute it (it returns prose, never
+page source), and the site is unreachable. **It is a hypothesis, not a finding.**
+
+`research/probe_platform.sh` added to settle it in one command from any networked machine:
+fetches the calendar page and its JavaScript, fingerprints them against EDP FutureWeb,
+Avfallsappen/Nova and ICS, probes ten candidate FutureWeb hostnames derived from the
+naming patterns of the 44 existing tenants, runs a live `SearchAdress` against anything
+that answers, and prints the verdict plus the exact YAML or `SERVICE_PROVIDERS` entry to
+use. Verified: exits cleanly with a clear message when the network is blocked, and its
+three detectors were unit-tested against synthetic fixtures for each platform (each fires
+on its own fixture only, and extracts the right URL).
+
+**Consequence if the probe comes back EDP:** `research/danderyd_se.draft.py` should be
+*deleted*, not finished, and the contribution shrinks to a four-line `SERVICE_PROVIDERS`
+entry plus a `TEST_CASES` row. The user could also configure `edpevent_se` with `url:`
+and have this working in Home Assistant immediately, with no upstream PR at all.
