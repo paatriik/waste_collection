@@ -28,7 +28,7 @@ waste_collection_schedule:
   sources:
     - name: danderyd_se
       args:
-        street_address: Karlsrovägen 1
+        street_address: Djursholms Slott
 ```
 
 ## How to get the source arguments

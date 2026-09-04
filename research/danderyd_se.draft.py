@@ -24,9 +24,15 @@ COUNTRY = "se"
 
 SOURCE_CODEOWNERS = ["@paatriik"]
 
+# PROVISIONAL — must be replaced with a verified address before submitting.
+# The value has to be an address the calendar actually resolves, in exactly the
+# format the widget shows, and upstream's test_sources.py runs against it. Neither
+# the format nor the resolvability can be confirmed without the endpoint capture,
+# so treat this entry as a placeholder, not a decision. Use a civic address; a
+# contributor's own street must not appear here, since these files are public and
+# permanent and SOURCE_CODEOWNERS already names the contributor.
 TEST_CASES: dict[str, dict] = {
-    # Civic addresses only — never a contributor's home address.
-    "Karlsrovägen": {"street_address": "Karlsrovägen"},
+    "Kommunhuset": {"street_address": "Djursholms Slott"},
 }
 
 # Waste streams Danderyd collects at villa/radhus, per the municipality's own pages.
@@ -58,8 +64,10 @@ ICON_MAP = {
 HOW_TO_GET_ARGUMENTS_DESCRIPTION = {
     "en": (
         "Open danderyd.se/avfallsschema, type your street into the address box and "
-        "pick your address from the suggestions. Enter it here exactly as it is "
-        "shown there, including the house number."
+        "pick your address from the suggestions. Enter it here exactly as the "
+        "calendar shows it. If no suggestion appears, try adding or removing the "
+        "space between the street name and the house number — the calendar matches "
+        "the address as plain text."
     ),
 }
 
@@ -111,7 +119,16 @@ class Source:
         raise NotImplementedError("endpoint unknown — see research/CAPTURE.md")
 
     def _fetch_schedule(self, session: requests.Session, identifier: str) -> list[dict]:
-        """Return the raw collection records for a resolved address."""
+        """Return the collection records for a resolved address.
+
+        Contract with fetch(): each record is a dict carrying at least
+
+            "date"       -- a string _parse_date accepts
+            "waste_type" -- the Swedish label, verbatim from the API
+
+        The API almost certainly uses different key names. Normalise them here so
+        fetch() stays independent of the wire format.
+        """
         raise NotImplementedError("endpoint unknown — see research/CAPTURE.md")
 
     # -- settled ----------------------------------------------------------------
@@ -143,7 +160,10 @@ class Source:
                 )
             )
 
-        if not entries:
-            raise SourceArgumentNotFound("street_address", self._street_address)
-
+        # No raise on an empty result. _search_address has already raised if the
+        # address is unknown, so reaching this point means it resolved. Danderyd
+        # regenerates the calendar periodically, and a property can legitimately
+        # have no dates listed in between. Raising SourceArgumentNotFound here
+        # would tell the user to check their spelling, which is both wrong and
+        # unactionable. Upstream's rule bans swallowing *errors*, not empty data.
         return entries

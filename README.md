@@ -32,6 +32,7 @@ Step 1 prints `200` → go to **Path A**. It prints `000` → go to **Path B**.
 | Goal | One new source module + one doc page, submitted as a PR to upstream `master` |
 | Blocked on | The collection widget's HTTP endpoints, which are still unknown |
 | Source module | Draft at `research/danderyd_se.draft.py`. Everything except two methods is done and verified |
+| Test address | **Provisional placeholder.** Must be verified live before submitting |
 | Doc page | `doc/source/danderyd_se.md` — essentially final |
 | Upstream CI gate | **Passes.** `tests/test_source_components.py` → 35 passed, `ruff check` and `ruff format --check` clean |
 | Live fetch test | Never run. Cannot run until the endpoints are known |
@@ -55,6 +56,11 @@ host:   www.danderyd.se:443
 ```
 
 `example.com` and `google.com` are refused too, so it is the allowlist, not the site.
+
+**Every channel was tested, not just `curl`.** `WebFetch` routes through Anthropic rather
+than the container proxy and is blocked all the same (`EGRESS_BLOCKED`). `WebSearch` and
+`github.com` *do* work — but `WebSearch` only ever returns prose summaries, never page
+source, so it cannot recover an endpoint. Do not burn turns re-testing these.
 
 **Do not retry this within a session that started blocked.** The allowlist is read when
 the VM boots. A policy change cannot reach a running session; it needs a new one. If
@@ -106,8 +112,12 @@ has three options for the user; the DevTools one takes about two minutes and is 
 reliable. Ask for it, then implement from what comes back — Path A steps 3-7 do not
 themselves need network until step 6.
 
-Do not stall waiting. There is no useful offline work left beyond this point; the
-remaining unknowns are all on the wire.
+Do not stall waiting. As of the second session the remaining unknowns really are all on
+the wire — but note that the first session's identical claim was wrong: a code review
+against the upstream tree still found three defects (see the second-session entry in
+`research/NOTES.md`). "Blocked on the network" is not the same as "nothing left to check".
+Before concluding there is no offline work, at least re-read the draft against upstream's
+current `CLAUDE.md` and `doc/contributing_source.md`.
 
 ---
 
@@ -117,8 +127,12 @@ remaining unknowns are all on the wire.
   tree at master returns zero hits. It is not in `edpevent_se.py`, `avfallsapp_se.py`,
   `recollect.yaml` or any other shared-platform config. A new source module is correct.
 - **Verdis AB** is the collection contractor, and also serves **Täby, Järfälla and
-  Simrishamn**. If those share a calendar backend, one module could cover four
-  municipalities via `EXTRA_INFO` — worth 30 seconds checking once the backend is known.
+  Simrishamn**. The "one module covers four municipalities" idea is **mostly dead** and
+  should not be re-derived: Simrishamn is already upstream as `okrab_se`, backed by
+  ÖKRAB's own `minasidor.okrab.se/MinaSidor_API`. ÖKRAB is Simrishamn's waste authority
+  and Verdis is only its hauler — so being a Verdis municipality says nothing about which
+  calendar backend a kommun runs. Täby and Järfälla are unchecked but the prior is low.
+  Neither appears anywhere upstream.
 - **Verdis "Mina sidor" is a dead end.** It requires a login, and upstream refuses
   login-gated sources outright. Only the public address search on danderyd.se is viable.
 - **Waste streams.** Villa/radhus standard subscription is *matavfall* + *restavfall*.
@@ -132,10 +146,15 @@ remaining unknowns are all on the wire.
   refresh. This is a data-freshness caveat for users, not a bug to work around. It also
   hints the backend may serve a static dataset rather than query a live system — still
   fine upstream, as long as the module fetches it at runtime.
-- **Test address.** The user lives on Karlsrovägen, 18253 Danderyd. Use `Karlsrovägen`
-  **without a house number** in `TEST_CASES`, or a civic address such as the kommunhus.
-  Upstream's own guidance is explicit that test cases must never carry a contributor's
-  home address, and these files are public and permanent.
+- **Test address — unresolved, and not resolvable offline.** It must be a civic address,
+  never the contributor's own street: these files are public and permanent, and
+  `SOURCE_CODEOWNERS = ["@paatriik"]` already names the contributor, so naming their
+  street links the two. It must also be in the exact format the widget uses — and that
+  format is one of the unknowns the capture settles. `TEST_CASES` currently holds a
+  civic placeholder marked `PROVISIONAL`; **replace it with a verified address during the
+  live-test step.** (An earlier revision used the contributor's street with no house
+  number, which both leaked the street and contradicted the module's own instruction to
+  include a house number.)
 
 ---
 

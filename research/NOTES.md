@@ -124,3 +124,59 @@ source, runs the `Karlsrovägen` case and stops at
 the only thing missing is the wire format.
 
 Network at handoff: `https://www.danderyd.se/` still returns `000` (proxy 403).
+
+### 2026-09-04 — second session: channel test, upstream re-check, draft fixes
+
+**The blocker is confirmed across every available channel, not just `curl`.** The prior
+session tested `curl` only. Retested:
+
+| Channel | Result |
+|---|---|
+| `curl https://www.danderyd.se/` | `000` — proxy 403 on CONNECT |
+| `WebFetch` (routes via Anthropic, not the container proxy) | `EGRESS_BLOCKED: Access to www.danderyd.se is blocked by the network egress proxy` |
+| `WebSearch` | **works**, but returns prose summaries, not raw HTML or `<script>` URLs |
+| `github.com` (git clone, GitHub MCP) | **works** |
+
+So `WebSearch` and GitHub are usable and the rest is not. `WebSearch` cannot recover an
+endpoint — it never returns the page source. Do not spend turns on it for that purpose.
+
+**Open question 6 (shared Verdis backend) is largely answered, and the answer is no.**
+Simrishamn *is* already supported upstream — as `okrab_se`, which posts to
+`https://minasidor.okrab.se/MinaSidor_API/api/external/schedulePost/`. ÖKRAB
+(Österlens Kommunala Renhållnings AB) is Simrishamn's own waste authority. Verdis is the
+hauler there, not the calendar provider. **Verdis being the contractor therefore does not
+imply a shared calendar backend**, and the "one module covers four municipalities" idea
+loses most of its support. Täby and Järfälla are still unchecked, but the prior should now
+be low. Neither appears anywhere upstream.
+
+**No duplicate effort upstream.** `search_pull_requests` for danderyd/verdis/taby returns
+0 results; no open issue requests Danderyd. There is no existing capture to reuse.
+
+**Re-verified at upstream HEAD `1339b9b`** (not just the older checkout):
+
+- `pytest tests/test_source_components.py` → 35 passed; `ruff check` and `ruff format` clean
+- All 12 `Icons` members the draft uses exist in `icons.py`
+- `Collection(icon=...)` is typed `str | None`, so an unmapped waste type passing `None` is fine
+- `SourceArgumentNotFound(argument, value, message_addition=...)` and
+  `SourceArgumentNotFoundWithSuggestions(argument, value, suggestions)` match the draft's usage
+- Upstream's rules ban generic `Exception`; **nothing requires raising on an empty result**
+
+**Three defects found and fixed in the draft:**
+
+1. `TEST_CASES` used `Karlsrovägen` with no house number while
+   `HOW_TO_GET_ARGUMENTS_DESCRIPTION` told users to include one — the module contradicted
+   itself, and a bare street name would most likely not resolve in a live test. It was also
+   the contributor's own street, which combined with `SOURCE_CODEOWNERS = ["@paatriik"]`
+   links the codeowner to a specific street in a small municipality, permanently and
+   publicly. Replaced with a civic placeholder and marked PROVISIONAL: the real value
+   cannot be chosen before the capture, because the required address *format* is unknown.
+   The doc page's example carried the same street and was changed too.
+2. `fetch()` raised `SourceArgumentNotFound` when the schedule came back empty. Since
+   `_search_address` already raises for an unknown address, an empty result means the
+   address resolved but has no dates — which the municipality's own regeneration notice
+   says is a real state. The old behaviour told the user to check their spelling, which is
+   wrong and unactionable. Now returns the empty list.
+3. `_fetch_schedule` had no stated contract, so the `record["date"]` / `record["waste_type"]`
+   keys `fetch()` depends on were implicit. Documented in the docstring.
+
+CI gate still green after all three (35 passed, ruff clean).
