@@ -229,3 +229,40 @@ on its own fixture only, and extracts the right URL).
 *deleted*, not finished, and the contribution shrinks to a four-line `SERVICE_PROVIDERS`
 entry plus a `TEST_CASES` row. The user could also configure `edpevent_se` with `url:`
 and have this working in Home Assistant immediately, with no upstream PR at all.
+
+### 2026-09-04 — probe_platform.sh tested end to end against a mock; three bugs fixed
+
+Network retested first: `danderyd.se` and `example.com` both `000`, `WebFetch` still
+`EGRESS_BLOCKED`. The allowlist is unchanged; `noProxy` does cover localhost, which is
+what made the following possible.
+
+Built a mock EDP FutureWeb tenant (a kommun page whose endpoint appears **only inside a
+linked `.js` file**, plus a `SearchAdress` returning a realistic `Adress`/`BuildingId`
+array) and ran the probe against it. That exercised steps 1-4 and both verdict branches,
+which fixture-level testing of the greps had not. It found three real defects:
+
+1. **Host regex dropped any host with a port.** `[A-Za-z0-9._-]` excludes `:`, so
+   `http://host:8733/FutureWeb/SimpleWastePickup` never matched and the endpoint was
+   detected but never printed. Fixed.
+2. **A candidate was called "live" on its status code alone.** A kommun site answering
+   200 with a catch-all HTML error page would have been reported as a working endpoint.
+   Now the body must actually look like a FutureWeb address list
+   (`[`, `Adress`, `BuildingId`, `PickUpDay`) before the host is accepted; a 200 that
+   fails that check is printed and explicitly ignored.
+3. **The verdict printed `<the SimpleWastePickup URL printed above>`** instead of the URL
+   it had just found, so the config it emitted was not actually paste-ready. It now
+   substitutes the discovered URL — preferring one scraped from the page, falling back to
+   a candidate that validated.
+
+Verified after the fixes:
+
+| Case | Result |
+|---|---|
+| Endpoint hidden in linked JS | found and printed, verdict EDP, config paste-ready |
+| Catch-all 200 HTML on a wrong path | rejected, not reported as an endpoint |
+| Plain page, no markers, dead candidate | "no shared platform matched", and the verdict correctly says a negative is **not** proof a new module is needed |
+| No network at all | exits 1 with a clear message |
+
+The script also now takes `PROBE_PAGE`, `PROBE_SHORT`, `PROBE_ORIGIN` and
+`PROBE_CANDIDATES` overrides — needed for the mock, and useful for pointing it straight
+at a base URL found by other means.

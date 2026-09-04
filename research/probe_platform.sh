@@ -14,8 +14,12 @@
 
 set -uo pipefail
 
-PAGE="https://www.danderyd.se/bygga-bo-och-miljo/avfall-atervinning-och-aterbruk/nar-hamtas-mitt-avfall/"
-SHORT="https://www.danderyd.se/avfallsschema"
+# Overridable so this script can be exercised against a mock server, and so you can
+# point it at a base URL you already found by other means:
+#   PROBE_PAGE=... PROBE_CANDIDATES="https://host/FutureWeb/SimpleWastePickup" bash ...
+PAGE="${PROBE_PAGE:-https://www.danderyd.se/bygga-bo-och-miljo/avfall-atervinning-och-aterbruk/nar-hamtas-mitt-avfall/}"
+SHORT="${PROBE_SHORT:-https://www.danderyd.se/avfallsschema}"
+ORIGIN="${PROBE_ORIGIN:-https://www.danderyd.se}"
 UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 OUT="${TMPDIR:-/tmp}/danderyd-probe"
 mkdir -p "$OUT"
@@ -39,9 +43,9 @@ grep -oE 'src="[^"]+\.js[^"]*"' "$OUT/all.txt" \
 while read -r js; do
   case "$js" in
     //*)  js="https:$js" ;;
-    /*)   js="https://www.danderyd.se$js" ;;
+    /*)   js="$ORIGIN$js" ;;
     http*) ;;
-    *)    js="https://www.danderyd.se/$js" ;;
+    *)    js="$ORIGIN/$js" ;;
   esac
   get "$js" >> "$OUT/all.txt"
 done < "$OUT/scripts.txt"
@@ -55,7 +59,7 @@ FOUND=""
 # --- EDP Future / FutureWeb (upstream: edpevent_se, 44 tenants incl. Nacka, Roslagsvatten)
 if grep -qiE 'SimpleWastePickup|FutureWeb|SearchAdress|GetWastePickupSchedule' "$OUT/all.txt"; then
   echo "    HIT: EDP FutureWeb markers present"
-  grep -ohiE 'https?://[A-Za-z0-9._-]+/[A-Za-z/]*FutureWeb[A-Za-z]*/SimpleWastePickup' "$OUT/all.txt" | sort -u
+  grep -ohiE 'https?://[A-Za-z0-9._:-]+/[A-Za-z/]*FutureWeb[A-Za-z]*/SimpleWastePickup' "$OUT/all.txt" | sort -u | tee "$OUT/api_urls.txt"
   FOUND="edpevent"
 fi
 
@@ -78,7 +82,7 @@ hr
 
 echo "==> 3. probing candidate EDP FutureWeb hosts"
 # Host patterns taken verbatim from the 44 tenants in upstream edpevent_se.py.
-CANDIDATES="
+CANDIDATES="${PROBE_CANDIDATES:-
 https://edpmobile.danderyd.se/FutureWeb/SimpleWastePickup
 https://futureweb.danderyd.se/FutureWeb/SimpleWastePickup
 https://futureweb.danderyd.se/FutureWebBasic/SimpleWastePickup
@@ -89,13 +93,24 @@ https://edpmypage.danderyd.se/FutureWebOS/SimpleWastePickup
 https://services.danderyd.se/FutureWeb/SimpleWastePickup
 https://edpfuture.verdis.se/EDPFutureWeb/SimpleWastePickup
 https://futureweb.verdis.se/FutureWebBasic/SimpleWastePickup
-"
+}"
 LIVE=""
 for base in $CANDIDATES; do
+  body=$(curl -sS --max-time 12 -A "$UA" \
+         -X POST "$base/SearchAdress?searchText=Karlsro" 2>/dev/null)
   code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 12 -A "$UA" \
          -X POST "$base/SearchAdress?searchText=Karlsro" 2>/dev/null)
-  printf '    %-64s %s\n' "$base" "${code:-000}"
-  case "$code" in 200|204|400|405) LIVE="${LIVE} $base" ;; esac
+  # A status code is not evidence: a catch-all 200 HTML error page would pass.
+  # Require the body to actually look like a FutureWeb address list.
+  if printf '%s' "$body" | grep -qiE '\[|Adress|BuildingId|PickUpDay'; then
+    verdict="LOOKS LIKE FUTUREWEB"
+    LIVE="${LIVE} $base"
+  elif [ "$code" = "200" ]; then
+    verdict="answered, but body is not a FutureWeb address list — ignoring"
+  else
+    verdict=""
+  fi
+  printf '    %-58s %-4s %s\n' "$base" "${code:-000}" "$verdict"
 done
 hr
 
@@ -109,33 +124,40 @@ if [ -n "${LIVE// /}" ]; then
   hr
 fi
 
+# Prefer a URL scraped from the page; fall back to a candidate that validated.
+API_URL="$(head -n1 "$OUT/api_urls.txt" 2>/dev/null || true)"
+[ -n "$API_URL" ] || API_URL="$(printf '%s' "$LIVE" | tr ' ' '\n' | grep -v '^$' | head -n1 || true)"
+[ -n "$API_URL" ] || API_URL="<endpoint not found — get it from the DevTools capture>"
+
 echo "==> VERDICT"
 case "$FOUND" in
   edpevent)
-    cat <<'MSG'
+    cat <<MSG
     Danderyd runs EDP FutureWeb, which upstream ALREADY supports.
+
+    Endpoint: $API_URL
 
     DO NOT write a new source module. Two things follow:
 
-    1. You can use it today, with no code at all:
+    1. You can use it today, with no code at all. Put this in configuration.yaml:
 
          waste_collection_schedule:
            sources:
              - name: edpevent_se
                args:
                  street_address: "YOUR ADDRESS"
-                 url: "<the SimpleWastePickup URL printed above>"
+                 url: "$API_URL"
 
-    2. The upstream contribution shrinks to a four-line entry in
-       SERVICE_PROVIDERS in edpevent_se.py, plus its doc page row:
+    2. The upstream contribution shrinks to this entry in SERVICE_PROVIDERS in
+       edpevent_se.py (plus a TEST_CASES row using service_provider: danderyd,
+       and a line in doc/source/edpevent_se.md):
 
          "danderyd": {
              "title": "Danderyds kommun",
              "url": "https://www.danderyd.se",
-             "api_url": "<the SimpleWastePickup URL printed above>",
+             "api_url": "$API_URL",
          },
 
-       Add a TEST_CASES entry using service_provider: danderyd.
        research/danderyd_se.draft.py should then be deleted, not finished.
 MSG
     ;;
