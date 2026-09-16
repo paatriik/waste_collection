@@ -25,8 +25,11 @@ COUNTRY = "se"
 SOURCE_CODEOWNERS = ["@paatriik"]
 
 TEST_CASES: dict[str, dict] = {
-    # Civic addresses only — never a contributor's home address.
-    "Karlsrovägen": {"street_address": "Karlsrovägen"},
+    # Civic addresses only — never a contributor's home address. Upstream runs
+    # these against the live endpoint, so <TEST_ADDRESS> must be replaced with a
+    # real, public, non-residential address (e.g. the kommunhus) that has been
+    # confirmed to resolve, before this is submitted.
+    "<TEST_ADDRESS>": {"street_address": "<TEST_ADDRESS>"},
 }
 
 # Waste streams Danderyd collects at villa/radhus, per the municipality's own pages.
