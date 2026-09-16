@@ -124,3 +124,43 @@ source, runs the `Karlsrovägen` case and stops at
 the only thing missing is the wire format.
 
 Network at handoff: `https://www.danderyd.se/` still returns `000` (proxy 403).
+
+### 2026-09-16 — third session, still blocked, and now we know why
+
+Checked the blocker the way the README prescribes. Result is unchanged, but this session
+produced a diagnosis rather than another "still 403":
+
+| Check | Result |
+|---|---|
+| `curl https://www.danderyd.se/` | `000` (proxy answered 403 to CONNECT) |
+| `curl https://www.verdis.se/` | `000` |
+| `curl https://example.com/` | `000` — so it is the allowlist, not the site |
+| Container uptime at the time of the check | **2 minutes** — this was a genuinely fresh VM, so the "policy changes need a new session" caveat does not explain it |
+| `WebFetch` on the calendar page | `EGRESS_BLOCKED` — the managed fetch tool uses the same egress policy, so it is not a way around it |
+| `WebSearch` | works (runs server-side, not from the container). Returns prose summaries only — no raw HTML or JS, so it cannot recover the endpoints |
+| GitHub / pypi | reachable, as expected at Trusted |
+
+**Root cause.** `list_environments` returns two environments, *both named "Default"*:
+
+| environment_id | description |
+|---|---|
+| `env_014N2WDVgp9cGRukMu5QKUWc` | `Default - trusted network access` ← this session runs here |
+| `env_01HF1jS5RigdyCyNN3krM8vc` | (none) |
+
+Neither carries a custom allowlist, and the one this session uses still says *trusted*.
+So the network setting was never applied to the environment these sessions actually boot
+in — most likely edited on the other "Default" row, or not saved. Confirm the environment
+id in the settings pane matches `env_014N2WDVgp9cGRukMu5QKUWc` before saving.
+
+### Rig re-verified on a clean container
+
+`bash research/setup_dev.sh` from scratch: exit 0, **42 passed** (upstream has grown from
+35 since 2026-09-04), `ruff check` clean, `ruff format --check` clean. Nothing has rotted.
+
+`grep -ril danderyd` over a fresh upstream clone still returns only the two files this
+script copies in, so Danderyd is still unsupported upstream and a new module is still the
+right shape. `grep -ril verdis` returns nothing.
+
+One correction to an earlier note: **Simrishamn is not a Verdis municipality.** Upstream's
+`doc/source/okrab_se.md` shows Simrishamn is served by ÖKRAB. The shared-backend idea is
+therefore limited to Täby and Järfälla, not four municipalities.

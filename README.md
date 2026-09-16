@@ -33,7 +33,7 @@ Step 1 prints `200` → go to **Path A**. It prints `000` → go to **Path B**.
 | Blocked on | The collection widget's HTTP endpoints, which are still unknown |
 | Source module | Draft at `research/danderyd_se.draft.py`. Everything except two methods is done and verified |
 | Doc page | `doc/source/danderyd_se.md` — essentially final |
-| Upstream CI gate | **Passes.** `tests/test_source_components.py` → 35 passed, `ruff check` and `ruff format --check` clean |
+| Upstream CI gate | **Passes.** `tests/test_source_components.py` → 42 passed, `ruff check` and `ruff format --check` clean (re-verified 2026-09-16 on a clean container) |
 | Live fetch test | Never run. Cannot run until the endpoints are known |
 
 The CI-gate pass is trustworthy: a negative control (`COUNTRY = "sw"`) makes the suite
@@ -55,6 +55,11 @@ host:   www.danderyd.se:443
 ```
 
 `example.com` and `google.com` are refused too, so it is the allowlist, not the site.
+
+**Check which environment you are editing.** The account has two environments *both
+named "Default"*. This branch's sessions boot in `env_014N2WDVgp9cGRukMu5QKUWc`
+(described "Default - trusted network access"). Editing the other one changes nothing.
+Run `list_environments` — or read the id in the settings pane — before saving.
 
 **Do not retry this within a session that started blocked.** The allowlist is read when
 the VM boots. A policy change cannot reach a running session; it needs a new one. If
@@ -116,9 +121,11 @@ remaining unknowns are all on the wire.
 - **Danderyd is not supported upstream.** `grep -ri danderyd` over the whole upstream
   tree at master returns zero hits. It is not in `edpevent_se.py`, `avfallsapp_se.py`,
   `recollect.yaml` or any other shared-platform config. A new source module is correct.
-- **Verdis AB** is the collection contractor, and also serves **Täby, Järfälla and
-  Simrishamn**. If those share a calendar backend, one module could cover four
-  municipalities via `EXTRA_INFO` — worth 30 seconds checking once the backend is known.
+- **Verdis AB** is the collection contractor, and also serves **Täby and Järfälla**
+  (<https://www.verdis.se/kommuner/>). If those share a calendar backend, one module could
+  cover three municipalities via `EXTRA_INFO` — worth 30 seconds checking once the backend
+  is known. Simrishamn was listed here earlier by mistake: it is served by ÖKRAB and is
+  already upstream as `okrab_se`.
 - **Verdis "Mina sidor" is a dead end.** It requires a login, and upstream refuses
   login-gated sources outright. Only the public address search on danderyd.se is viable.
 - **Waste streams.** Villa/radhus standard subscription is *matavfall* + *restavfall*.
