@@ -266,3 +266,42 @@ Verified after the fixes:
 The script also now takes `PROBE_PAGE`, `PROBE_SHORT`, `PROBE_ORIGIN` and
 `PROBE_CANDIDATES` overrides — needed for the mock, and useful for pointing it straight
 at a base URL found by other means.
+
+### 2026-09-16 — EDP contribution path dry-run verified
+
+Network retested on a fresh session 11 days later: `danderyd.se`, `verdis.se` and
+`example.com` all still `000`. The environment's access level was never changed.
+
+Upstream has moved (HEAD `cd4885b`, v2.34.1; the component suite is now **42** tests, up
+from 35). Rebuilt the rig from scratch against it: the draft still passes, ruff still
+clean. Nothing relevant landed upstream in the interval — Danderyd is still absent, and
+`edpevent_se.py`'s tenant list is unchanged at 19 providers.
+
+**The EDP route is now proven end to end, with only the URL missing.** Added
+`research/add_edp_provider.py`, which inserts a `SERVICE_PROVIDERS` entry and a
+`TEST_CASES` row into an upstream checkout's `edpevent_se.py`. Dry-run with a placeholder
+URL against current upstream: **42 passed, `ruff format --check` clean**, diff exactly
+those two entries.
+
+Two things confirmed while doing it:
+
+- **The doc page must not be touched.** `doc/source/edpevent_se.md` lists providers inside
+  a `<!--Begin of service section-->` / `<!--End of service section-->` block that upstream
+  generates after merge. Hand-editing it, or running `update_docu_links.py` in a branch,
+  is a review failure. So the whole EDP contribution is **two entries in one file**.
+- **`ruff check --select E,F,W,I` reports 4 `E501` line-too-long errors on
+  `edpevent_se.py` — these are pre-existing upstream**, byte-identical before and after
+  the patch. They are not introduced by this change and are not a blocker. (Upstream's own
+  gate does not apply that line-length rule to the file.)
+
+Also learned from the current cloud-environment docs, which corrects a long-standing
+assumption in this repo:
+
+- There are **four** access levels — None, Trusted, **Full**, Custom — not just
+  Trusted/Custom. **Full** is a one-click fix and simpler than maintaining an allowlist.
+- **MCP connector traffic does not pass through the session's network allowlist**; it
+  travels through Anthropic's servers. So a connected fetch/browser connector could reach
+  danderyd.se while `curl` and `WebFetch` still cannot. None is currently installed;
+  Parallel Search (authless, `web_fetch`) and TinyFish (real browser) are the candidates.
+  Unverified — `web_fetch` may return extracted text rather than the raw JS bundle where
+  the endpoint likely lives.

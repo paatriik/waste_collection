@@ -257,6 +257,7 @@ working:
 | `research/capture.sh` | Automates the static half of the capture |
 | `research/setup_dev.sh` | Builds the test rig and runs the CI gate |
 | `research/probe_platform.sh` | **Run this first.** Decides whether a new module is needed at all |
+| `research/add_edp_provider.py` | Applies the EDP route once the probe confirms it. Dry-run verified: 42 tests pass |
 
 `custom_components/.../source/danderyd_se.py` does not exist yet — that path is the
 finished article's home, and `setup_dev.sh` prefers it over the draft once it appears.
