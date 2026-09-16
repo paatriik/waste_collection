@@ -10,21 +10,39 @@ session with no memory of it. Read it top to bottom before doing anything.
 
 ## START HERE
 
+**As of 2026-09-16 the allowlist was opened**, so a session started after that should
+have network. Verify it, then let the probe decide the whole shape of the task:
+
 ```bash
-# 1. Is the network blocker gone? This is the only thing that decides what you do next.
+# 1. Confirm you actually have network. 200 = go. 000 = you are in an old session;
+#    the allowlist is read at VM boot, so start a new one rather than debugging it.
 curl -sS -o /dev/null -w '%{http_code}\n' https://www.danderyd.se/
 
-# 1b. If that printed 200, run this FIRST. It may end the whole task in 30 seconds.
+# 2. THE decisive step. Run it before writing any code — it may end the task outright,
+#    and it prints the exact config or patch to use.
 bash research/probe_platform.sh
 
-# 2. Build the test rig (~1 min, idempotent, safe to re-run).
+# 3. Build the test rig (~1 min, idempotent, safe to re-run).
 bash research/setup_dev.sh
 
-# 3. Read the investigation log.
+# 4. Read the investigation log — every dead end is recorded so you don't redo one.
 cat research/NOTES.md
 ```
 
-Step 1 prints `200` → go to **Path A**. It prints `000` → go to **Path B**.
+**Do not skip step 2.** Writing a new source module for a provider upstream already
+covers is this project's single biggest risk — it is upstream's own most common rejection
+reason, and the evidence that Danderyd may be one is set out under *The platform question*
+below. The probe prints one of four verdicts:
+
+| Verdict | What to do |
+|---|---|
+| **EDP FutureWeb** | Run `python3 research/add_edp_provider.py --api-url <printed URL> --test-address "<civic address>"`. Dry-run verified: 42 tests pass, diff is two entries in `edpevent_se.py`. **Delete the draft.** |
+| **Avfallsappen** | Add a provider entry to upstream `avfallsapp_se.py`. Delete the draft. |
+| **ICS feed** | A ~20-line YAML file in upstream `doc/ics/yaml/`. No Python at all. Delete the draft. |
+| **no match** | *Now* finish `research/danderyd_se.draft.py` — implement `_search_address` and `_fetch_schedule` from what the probe captured in its output directory. |
+
+Whichever route: the test address in `TEST_CASES` is a **placeholder** and must be
+replaced with one verified live, and it must not be the contributor's own street.
 
 ---
 
@@ -33,11 +51,11 @@ Step 1 prints `200` → go to **Path A**. It prints `000` → go to **Path B**.
 | | |
 |---|---|
 | Goal | Upstream support for Danderyd — **as a new module only if no shared platform already covers it** (see the platform question) |
-| Blocked on | The collection widget's HTTP endpoints, which are still unknown |
+| Blocked on | The collection widget's HTTP endpoints. Network was opened 2026-09-16, so a **new** session can now get them itself — run the probe |
 | Source module | Draft at `research/danderyd_se.draft.py`. Everything except two methods is done and verified |
 | Test address | **Provisional placeholder.** Must be verified live before submitting |
 | Doc page | `doc/source/danderyd_se.md` — essentially final |
-| Upstream CI gate | **Passes.** `tests/test_source_components.py` → 35 passed, `ruff check` and `ruff format --check` clean |
+| Upstream CI gate | **Passes.** `tests/test_source_components.py` → 42 passed at upstream `cd4885b` (v2.34.1), `ruff check` and `ruff format --check` clean |
 | Live fetch test | Never run. Cannot run until the endpoints are known |
 
 The CI-gate pass is trustworthy: a negative control (`COUNTRY = "sw"`) makes the suite
