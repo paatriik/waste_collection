@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Bootstrap a working test rig for the Danderyd source.
+# Bootstrap a test rig and verify the Danderyd patch against upstream.
 #
 #   bash research/setup_dev.sh [WORKDIR]
 #
 # Idempotent. Default WORKDIR is $SCRATCH/wcs if SCRATCH is set, else ./.devrig.
-# Clones upstream, builds a venv, works around the stdlib-shadowing problem, copies
-# this repo's draft source and doc page in, and runs upstream's CI gate.
+# Clones upstream, builds a venv, works around the stdlib-shadowing problem,
+# applies patches/0001-edpevent_se-add-danderyd.patch and runs upstream's CI gate.
 
 set -euo pipefail
 
@@ -14,9 +14,10 @@ WORK="${1:-${SCRATCH:-$REPO/.devrig}}"
 UPSTREAM="$WORK/upstream"
 VENV="$WORK/venv"
 PKGROOT="$WORK/pkgroot"
+PATCH="$REPO/patches/0001-edpevent_se-add-danderyd.patch"
 
 INNER="$UPSTREAM/custom_components/waste_collection_schedule/waste_collection_schedule"
-SRC_DIR="$INNER/source"
+SRC="$INNER/source/edpevent_se.py"
 
 mkdir -p "$WORK"
 
@@ -29,8 +30,8 @@ fi
 
 echo "==> venv"
 [ -d "$VENV" ] || python3 -m venv "$VENV"
-# homeassistant is deliberately omitted: it is ~200 MB and the structural test
-# suite does not import it. Only the live HA integration layer needs it.
+# homeassistant is deliberately omitted: it is ~200 MB, pins Python >= 3.12, and
+# the structural test suite does not import it. Only the live HA layer needs it.
 "$VENV/bin/pip" install -q --upgrade pip
 "$VENV/bin/pip" install -q \
   requests beautifulsoup4 lxml python-dateutil pyyaml pytz \
@@ -44,22 +45,23 @@ echo "==> package root"
 rm -rf "$PKGROOT" && mkdir -p "$PKGROOT"
 ln -sfn "$INNER" "$PKGROOT/waste_collection_schedule"
 
-echo "==> install this repo's files into the checkout"
-if [ -f "$REPO/custom_components/waste_collection_schedule/waste_collection_schedule/source/danderyd_se.py" ]; then
-  cp "$REPO/custom_components/waste_collection_schedule/waste_collection_schedule/source/danderyd_se.py" "$SRC_DIR/danderyd_se.py"
-  echo "    source: final"
-else
-  cp "$REPO/research/danderyd_se.draft.py" "$SRC_DIR/danderyd_se.py"
-  echo "    source: DRAFT (endpoints not implemented)"
-fi
-cp "$REPO/doc/source/danderyd_se.md" "$UPSTREAM/doc/source/danderyd_se.md"
+echo "==> apply patch"
+git -C "$UPSTREAM" checkout -- \
+  custom_components/waste_collection_schedule/waste_collection_schedule/source/edpevent_se.py \
+  doc/source/edpevent_se.md
+git -C "$UPSTREAM" apply "$PATCH"
+echo "    applied $(basename "$PATCH")"
 
 echo "==> upstream CI gate"
 ( cd "$UPSTREAM" && "$VENV/bin/python" -m pytest tests/test_source_components.py -q )
 
-echo "==> lint"
-"$VENV/bin/ruff" check --select E,F,W,I --line-length 88 --ignore E203,E501,E721 "$SRC_DIR/danderyd_se.py"
-"$VENV/bin/ruff" format --check --line-length 88 "$SRC_DIR/danderyd_se.py"
+echo "==> lint (repo's own ruff.toml)"
+( cd "$UPSTREAM" && "$VENV/bin/ruff" check "$SRC" && "$VENV/bin/ruff" format --check "$SRC" )
+
+echo "==> live fetch (needs network access to future.danderyd.se)"
+( cd "$INNER/test" && PYTHONPATH="$PKGROOT" "$VENV/bin/python" test_sources.py \
+    -s edpevent_se -l --icon --sorted 2>&1 | grep -A8 -i danderyd ) || \
+  echo "    live fetch unavailable — check egress to future.danderyd.se"
 
 cat <<EOF
 
@@ -67,13 +69,13 @@ Ready.
 
   WORK      $WORK
   python    $VENV/bin/python
-  upstream  $UPSTREAM
+  upstream  $UPSTREAM  (patch applied, diff is exactly 2 files)
 
-Live fetch against TEST_CASES (needs network access to danderyd.se):
+Re-run the live test on its own:
 
-  cd $INNER/test && $VENV/bin/python test_sources.py -s danderyd_se -l
+  cd $INNER/test && PYTHONPATH=$PKGROOT $VENV/bin/python test_sources.py -s edpevent_se -l --icon
 
-Import the module directly:
+Confirm the diff is clean before submitting:
 
-  PYTHONPATH=$PKGROOT $VENV/bin/python -c "from waste_collection_schedule.source import danderyd_se"
+  git -C $UPSTREAM diff --name-only
 EOF

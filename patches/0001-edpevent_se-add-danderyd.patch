@@ -1,0 +1,84 @@
+diff --git a/custom_components/waste_collection_schedule/waste_collection_schedule/source/edpevent_se.py b/custom_components/waste_collection_schedule/waste_collection_schedule/source/edpevent_se.py
+index 11e7302..a308109 100644
+--- a/custom_components/waste_collection_schedule/waste_collection_schedule/source/edpevent_se.py
++++ b/custom_components/waste_collection_schedule/waste_collection_schedule/source/edpevent_se.py
+@@ -114,6 +114,14 @@ TEST_CASES = {
+         "street_address": "Fogdevägen 13, Saltsjö-Duvnäs",
+         "service_provider": "nvoa",
+     },
++    "Danderyd - Skolvägen 1, Enebyberg": {
++        "street_address": "Skolvägen 1, Enebyberg",
++        "service_provider": "danderyd",
++    },
++    "Danderyd - Klingsta Gård": {
++        "street_address": "Klingsta Gård",
++        "service_provider": "danderyd",
++    },
+ }
+ 
+ COUNTRY = "se"
+@@ -128,6 +136,17 @@ ICON_MAP = {
+     "Matavfall": Icons.BIO_KITCHEN,
+     "Slam": Icons.GENERAL_WASTE,
+     "Trädgårdsavfall": Icons.GARDEN,
++    "Grovavfall": Icons.BULKY,
++    "Elektronik": Icons.ELECTRONICS,
++    "Returpapper": Icons.NEWSPAPER,
++    "Papper": Icons.PAPER,
++    "Plast": Icons.PLASTIC_PACKAGING,
++    "Metall": Icons.METAL,
++    "Ofärgat glas": Icons.GLASS,
++    "Färgat Glas": Icons.GLASS_COLORED,
++    # Multi-compartment bins carrying several packaging streams at once.
++    "Papper/Plast": Icons.RECYCLING,
++    "Glas/Glas/Metal": Icons.RECYCLING,
+ }
+ 
+ # This can be used to rename the waste types to something more user friendly
+@@ -242,6 +261,11 @@ SERVICE_PROVIDERS = {
+         "url": "https://www.nacka.se/nackavattenavfall/avfall/sophamtning/tomningsdag/",
+         "api_url": "https://futureweb.nvoa.se/EDP/FutureWebBasic/SimpleWastePickup",
+     },
++    "danderyd": {
++        "title": "Danderyds kommun",
++        "url": "https://www.danderyd.se/bygga-bo-och-miljo/avfall-atervinning-och-aterbruk/nar-hamtas-mitt-avfall/",
++        "api_url": "https://future.danderyd.se/Danderyd/EDPFutureweb/SimpleWastePickup",
++    },
+ }
+ 
+ EXTRA_INFO = [
+diff --git a/doc/source/edpevent_se.md b/doc/source/edpevent_se.md
+index 7295d8d..33629be 100644
+--- a/doc/source/edpevent_se.md
++++ b/doc/source/edpevent_se.md
+@@ -7,6 +7,7 @@ This integration now also supports the municipalities of Boden and Skellefteå.
+ <!--Begin of service section-->
+ - `boden`: Boden
+ - `boras`: Borås Energi och Miljö
++- `danderyd`: Danderyds kommun
+ - `herrljunga-vargarda`: Herrljunga & Vårgårda kommun
+ - `kiruna-kommun`: Kiruna - Tekniska Verken
+ - `kretslopp-sydost`: Kretslopp Sydost
+@@ -98,6 +99,17 @@ waste_collection_schedule:
+         service_provider: skelleftea
+ ```
+ 
++Support for schedules provided by Danderyds kommun, north of Stockholm.
++
++```yaml
++waste_collection_schedule:
++  sources:
++    - name: edpevent_se
++      args:
++        street_address: Skolvägen 1, Enebyberg
++        service_provider: danderyd
++```
++
+ ## How to get the correct address
+ 
+ To find your correct address, search for it on your service providers website:
+@@ -110,3 +122,4 @@ To find your correct address, search for it on your service providers website:
+ - [Roslagsvatten](https://roslagsvatten.se/hamtningsschema)
+ - [Marks kommun](https://va-renhallning.mark.se/FutureWebBasic/SimpleWastePickup/SimpleWastePickup)
+ - [Örebro kommun](https://www.orebro.se/bygga-bo--trafik/avfall--atervinning/se-din-tomningsdag-och-hantera-dina-avfallskarl/sok-tomningsdag-pa-adress.html)
++- [Danderyds kommun](https://www.danderyd.se/bygga-bo-och-miljo/avfall-atervinning-och-aterbruk/nar-hamtas-mitt-avfall/)

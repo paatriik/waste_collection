@@ -1,126 +1,163 @@
 # Investigation notes — Danderyds kommun
 
-## Target
+## Outcome
 
-- Municipality: **Danderyds kommun**, Stockholms län, Sweden (`COUNTRY = "se"`)
-- Resident-facing lookup page:
-  <https://www.danderyd.se/bygga-bo-och-miljo/avfall-atervinning-och-aterbruk/nar-hamtas-mitt-avfall/>
-- Short URL also seen in search results: `danderyd.se/avfallsschema`
-- Collection contractor: **Verdis AB** (<https://www.verdis.se/kommuner/danderyd/>).
-  Verdis also runs Täby, Järfälla and Simrishamn — if the calendar backend is shared,
-  one source module could cover several municipalities via `EXTRA_INFO`.
-- Grease-separator sludge is collected by Ohlssons (out of scope — not household waste).
+**Danderyd runs EDP Futureweb (`SimpleWastePickup`), which upstream already supports
+generically via `edpevent_se.py`.** No new source module is needed. The contribution is
+a `SERVICE_PROVIDERS` entry, two `TEST_CASES`, ten `ICON_MAP` keys and a doc update —
+see `patches/0001-edpevent_se-add-danderyd.patch`.
 
-## Coverage check against upstream (done)
+The earlier plan in this repo (a standalone `danderyd_se.py` module) was wrong. It was
+built without network access, from the municipality's prose description of the widget,
+and it assumed a bespoke backend. The draft and its doc page have been deleted.
 
-`grep -ri danderyd` over the whole upstream tree at master: **0 hits.**
-Not covered by any existing module, and not present in any shared-platform config
-(`edpevent_se.py`, `avfallsapp_se.py`, `recollect.yaml`, `mein_abfallkalender_online.yaml`, …).
-Nearest Swedish modules are 19 `COUNTRY = "se"` sources, none in Stockholms län.
+## How the platform was identified
 
-Conclusion: **a new source module is required.**
+The calendar page
 
-## What the widget does (from public descriptions, not yet verified against the wire)
+<https://www.danderyd.se/bygga-bo-och-miljo/avfall-atervinning-och-aterbruk/nar-hamtas-mitt-avfall/>
 
-1. Resident types a street address into a search box on the municipality page.
-2. After a short delay, matching addresses appear as autocomplete options.
-3. Resident clicks their address; a scrollable list of upcoming collection dates renders.
-4. Guidance on the page: "if you don't find your address, try removing or adding spaces
-   between letters and numbers" — suggests loose string matching against a fixed
-   address table rather than a normalised address database.
-5. The page carries a "calendar last updated <date>" notice and warns that subscription
-   changes made after that date won't show. Danderyd changed waste system in June 2026.
+carries no widget JavaScript of its own. It embeds an iframe:
 
-Point 5 matters: it implies the calendar is generated from a **periodically refreshed
-dataset**, possibly a static JSON blob served alongside the page, rather than a live
-query against the billing system. That is still acceptable upstream — fetching a JSON
-file over HTTP at runtime is a live fetch. What is *not* acceptable is embedding that
-data in the source module.
-
-## Blocker
-
-This session's cloud environment runs at **Trusted** network access, whose allowlist
-covers package registries, GitHub and cloud SDKs only. Every request to `danderyd.se`,
-`verdis.se` (and `google.com`, `wikipedia.org`) is refused by the egress proxy:
-
-```
-kind:   connect_rejected
-detail: gateway answered 403 to CONNECT (policy denial or upstream failure)
-host:   www.danderyd.se:443
+```html
+<iframe src="https://future.danderyd.se/Danderyd/EDPFutureweb/SimpleWastePickup/SimpleWastePickup"
+        width="300" height="150">
 ```
 
-So the widget's endpoints cannot be discovered from inside this session. Either:
+That iframe loads `Assets/JavascriptComponents/SimpleWastePickup.js`, a jQuery UI
+autocomplete whose two calls are the standard EDP Futureweb pair.
 
-- **(A)** the environment's network access is switched to **Custom** with `*.danderyd.se`
-  and `*.verdis.se` added (keeping the default package-manager list), or
-- **(B)** the endpoints are captured on a machine that can reach the site — see
-  `research/capture.sh` and `research/CAPTURE.md`.
+The earlier `grep -ri danderyd` over upstream returned zero hits, which was true but
+misleading: `edpevent_se.py` is keyed on *service provider*, not municipality, and
+Danderyd was simply not yet listed. Checking for the platform, not the place name, is
+what found it.
 
-## Open questions to resolve before implementing
+## The API
 
-1. Autocomplete endpoint: URL, method, query parameter name, response shape.
-2. Schedule endpoint: URL, method, what identifier it takes (address string? an opaque
-   building/customer id returned by the autocomplete step?), response shape.
-3. Are there API keys, session cookies, CSRF tokens or `Referer` checks? Anything
-   requiring a login disqualifies the source upstream.
-4. Waste-type strings returned, verbatim in Swedish, so `ICON_MAP` can be built:
-   expect some of *Mat- och restavfall*, *Matavfall*, *Restavfall*, *Trädgårdsavfall*,
-   *Returpapper*, *Förpackningar* (papper/plast/glas/metall), *Grovavfall*.
-5. Date format and how far ahead the feed runs.
-6. Whether Täby / Järfälla / Simrishamn hit the same backend with a different tenant id.
-7. Whether an iCal/`.ics` subscription exists. If it does, the far cheaper route is an
-   entry in `doc/ics/yaml/` instead of a Python module.
+Base: `https://future.danderyd.se/Danderyd/EDPFutureweb/SimpleWastePickup`
 
----
+### 1. Address search
 
-## Progress log
+```
+POST {base}/SearchAdress?searchText=Skolvägen+1
+```
 
-### 2026-09-04 — offline groundwork complete
+The widget sends a JSON body; upstream sends the term as a query parameter with an empty
+body. Both work. Note `requests` sets `Content-Length: 0` on an empty POST — `curl -X POST -G`
+does not, and the server answers `411 Length Required`. That is a curl artifact, not a
+difference the module has to handle.
 
-Verified against a local checkout of upstream master (draft source + doc page copied in,
-inner package isolated on `PYTHONPATH` so `custom_components/.../calendar.py` does not
-shadow the stdlib `calendar` module):
+```json
+{"Succeeded": true,
+ "Buildings": ["Skolvägen 1, Enebyberg (201642)", "Skolvägen 2, Enebyberg (204982)"]}
+```
+
+The building id in parentheses is part of the string that step 2 expects.
+
+### 2. Schedule
+
+```
+GET {base}/GetWastePickupSchedule?address=Skolvägen+1,+Enebyberg+(201642)
+```
+
+```json
+{"RhServices": [
+  {"WasteType": "Papper/Plast",
+   "NextWastePickup": "2026-09-28",
+   "WastePickupFrequency": "Måndag jämn vecka ",
+   "WastePickupsPerYear": 26,
+   "BinType": {"Code": "KÄ240", "Size": 240.0, "Unit": "l", "ContainerType": "Kärl tvådelat"},
+   "IsActive": true, "BuildingID": "201642", "Fee": {...}}
+]}
+```
+
+No API key, no cookie, no CSRF token, no `Referer` check, no login. Dates are `%Y-%m-%d`,
+which `edpevent_se.py` already parses.
+
+## Waste types returned
+
+Surveyed 77 addresses across 15 Danderyd streets (248 service records):
+
+| WasteType | n | Icon mapped to | Already upstream? |
+|---|---|---|---|
+| `Restavfall` | 76 | `GENERAL_WASTE` | yes |
+| `Matavfall` | 68 | `BIO_KITCHEN` | yes |
+| `Papper/Plast` | 42 | `RECYCLING` | **added** |
+| `Returpapper` | 12 | `NEWSPAPER` | **added** |
+| `Metall` | 8 | `METAL` | **added** |
+| `Glas/Glas/Metal` | 7 | `RECYCLING` | **added** |
+| `Färgat Glas` | 7 | `GLASS_COLORED` | **added** |
+| `Ofärgat glas` | 7 | `GLASS` | **added** |
+| `Papper` | 5 | `PAPER` | **added** |
+| `Trädgårdsavfall` | 5 | `GARDEN` | yes |
+| `Plast` | 4 | `PLASTIC_PACKAGING` | **added** |
+| `Elektronik` | 4 | `ELECTRONICS` | **added** |
+| `Grovavfall` | 3 | `BULKY` | **added** |
+
+`ICON_MAP` lookup in `edpevent_se.py` is an exact, case-sensitive `dict.get`, so the
+inconsistent casing upstream of it (`Färgat Glas` vs `Ofärgat glas`) has to be mirrored
+verbatim. `Papper/Plast` and `Glas/Glas/Metal` are multi-compartment bins carrying
+several streams at once, so they get the generic `RECYCLING` rather than the icon of
+whichever stream happens to be named first.
+
+The additions are purely additive — every existing key keeps its value — so other
+EDPEvent providers can only gain icons where they previously fell back to `mdi:help`.
+
+### Records with no date
+
+16 of 248 records had an empty `NextWastePickup`. `edpevent_se.py` skips those (with a
+warning) unless the frequency parses as a week number. That is existing upstream
+behaviour for inactive or on-request services and is out of scope here.
+
+## Test cases
+
+| Case | Streams exercised |
+|---|---|
+| `Skolvägen 1, Enebyberg` | Restavfall, Matavfall, Trädgårdsavfall, Papper/Plast, Glas/Glas/Metal |
+| `Klingsta Gård` | Restavfall, Matavfall, Grovavfall, Metall, Färgat Glas, Ofärgat glas |
+
+Between them they cover 9 of the 13 observed waste types and every icon added by this
+patch except `Returpapper`, `Papper`, `Plast` and `Elektronik`. Both search strings
+resolve to the intended building as `Buildings[0]`, which is what upstream's `fetch()`
+takes. Neither is a contributor's home address.
+
+## Verification
+
+Against upstream master `8b21f6a` (2026-09-16):
 
 | Check | Result |
 |---|---|
-| `pytest tests/test_source_components.py` | **35 passed** |
-| Negative control (`COUNTRY = "sw"`) | fails with `unsupported country code 'sw' in source danderyd_se` — confirms the suite really does validate this file rather than skipping it |
-| `ruff check --select E,F,W,I` | clean |
-| `ruff format --check` | clean |
-| All 18 `ICON_MAP` values are `Icons` members | yes |
-| Exception signatures match usage | `SourceArgumentNotFound(argument, value, …)`, `SourceArgumentNotFoundWithSuggestions(argument, value, suggestions)` |
+| `pytest tests/test_source_components.py` | 42 passed |
+| Negative control (raw `"mdi:bottle-wine"` in a new `ICON_MAP` entry) | fails `test_icon_map_uses_canonical_icons` — the suite really does validate these entries |
+| `ruff check` / `ruff format --check` (repo's own `ruff.toml`) | clean |
+| Live `test_sources.py -s edpevent_se -l --icon` | 5 and 6 entries for the two Danderyd cases, correct dates, no `mdi:help` |
+| `git diff --name-only` | exactly 2 files, no generated files |
 
-So everything upstream's CI gate checks is already satisfied. What remains is the part
-that needs the network: the two endpoint methods and a live `test_sources.py` run.
+Reproduce all of it with `bash research/setup_dev.sh`.
 
-### Waste streams to expect (from the municipality's own pages)
+Note: ruff must be run with the repo's own `ruff.toml`, not a hand-rolled
+`--select E,F,W,I`. The repo ignores `E203,E501,E721`; overriding that reports four
+pre-existing long lines in `edpevent_se.py` that CI does not care about.
 
-Villa / radhus standard subscription: **matavfall** + **restavfall**. Optional add-ons:
-**trädgårdsavfall**, **returpapper** (6 or 13 pickups/year). From 2026 food-waste sorting
-is mandatory and kerbside packaging collection ("Närsortera") joins the standard
-subscription — paper and plastic every second week, glass and metal every fourth week.
-Also collected but likely on request rather than on a calendar: grovavfall, farligt
-avfall, elavfall, fallfrukt, slam.
+## Not verified
 
-`ICON_MAP` is keyed on lower-cased, whitespace-collapsed strings, so only the wording
-needs confirming against a live response, not the casing.
+Verdis AB also collects for **Täby, Järfälla and Simrishamn**. If those run EDP Futureweb
+too, each is a further four-line `SERVICE_PROVIDERS` entry. This session's egress
+allowlist covers `danderyd.se` only, so `taby.se`, `jarfalla.se` and `simrishamn.se` were
+refused by the proxy and the hypothesis is untested. Worth ten minutes on a machine with
+open network access; do not add a provider entry without a live fetch behind it.
 
-### Environment status
+## Upstream rules that apply
 
-| Blocker | State |
-|---|---|
-| GitHub push | **resolved** — branch pushed |
-| Network egress | **still blocked.** `example.com` and `google.com` are refused too, so the environment is still at `Trusted`. The allowlist is read at VM boot, so a policy change cannot take effect in an already-running session — a new session is required regardless |
-
-### 2026-09-04 — handoff prepared
-
-`research/setup_dev.sh` added and verified from a clean directory and from the default
-path: clones upstream, builds the venv, works around the `calendar.py` shadowing, installs
-this repo's files and runs the CI gate (35 passed) plus ruff. Exit 0 both times.
-
-The live test command in the README was dry-run and behaves correctly — it resolves the
-source, runs the `Karlsrovägen` case and stops at
-`failed: endpoint unknown — see research/CAPTURE.md`. So the rig is sound end to end and
-the only thing missing is the wire format.
-
-Network at handoff: `https://www.danderyd.se/` still returns `000` (proxy 403).
+- The diff must be exactly the source module and its doc page. `README.md`, `info.md`,
+  `sources.json`, `source_metadata.json` and `translations/*.json` are generated by CI
+  post-merge. Never run `update_docu_links.py` in a branch.
+- `doc/source/edpevent_se.md` is hand-maintained **in full**. Its
+  `<!--Begin of service section-->` markers look generated, but `START_SERVICE_SECTION`
+  and `END_SERVICE_SECTION` in `update_docu_links.py` are defined and never used —
+  dead constants. Same for the country-section markers. The list must be edited by hand,
+  and it is alphabetical.
+- `EXTRA_INFO` is derived from `SERVICE_PROVIDERS` by a comprehension, so a new provider
+  needs no separate `EXTRA_INFO` edit.
+- `ICON_MAP` values must be `Icons` enum members. Do not extend the enum in a source PR.
+- Upstream takes PRs only from a fork. See the README for the submission steps.
